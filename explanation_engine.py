@@ -278,3 +278,17 @@ def compute_financial_metrics(user_data):
     ]
 
     return metrics
+
+
+
+
+
+
+
+
+
+
+
+
+
+

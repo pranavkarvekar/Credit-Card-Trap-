@@ -58,22 +58,51 @@ def train_model():
     X = df[FEATURES]
     y = df["Risk_Level"]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+    # Stratified 60/20/20 train/val/test split
+    X_temp, X_test, y_temp, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_temp, y_temp, test_size=0.25, stratify=y_temp, random_state=42
     )
 
-    print("🤖 Training DecisionTreeClassifier...")
+    # Grid search for best hyperparameters
+    print("🔍 Running hyperparameter search...")
+    best_model = None
+    best_val_acc = 0
+    best_params = {}
+
+    for depth in [5, 6, 7]:
+        for leaf in [10, 20, 40]:
+            m = DecisionTreeClassifier(
+                max_depth=depth,
+                min_samples_leaf=leaf,
+                class_weight="balanced",
+                random_state=42,
+            )
+            m.fit(X_train, y_train)
+            val_acc = accuracy_score(y_val, m.predict(X_val))
+            print(f"   Depth={depth}, Leaf={leaf} → Val Accuracy={val_acc:.4f}")
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_model = m
+                best_params = {"max_depth": depth, "min_samples_leaf": leaf}
+
+    print(f"\n🏆 Best params: {best_params} (Val Accuracy={best_val_acc:.4f})")
+
+    # Re-train best model on full train+val data for final model
+    print("🤖 Training final model on train+val data...")
     model = DecisionTreeClassifier(
-        max_depth=6,
-        min_samples_leaf=20,
+        max_depth=best_params.get("max_depth", 5),
+        min_samples_leaf=best_params.get("min_samples_leaf", 40),
         class_weight="balanced",
         random_state=42,
     )
-    model.fit(X_train, y_train)
+    model.fit(X_temp, y_temp)  # train + val combined
 
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
-    print(f"\n✅ Accuracy: {acc:.4f}")
+    print(f"\n✅ Test Accuracy: {acc:.4f}")
     print(classification_report(y_test, y_pred, target_names=list(RISK_LABELS.values())))
 
     print(f"💾 Saving model to {MODEL_PATH}...")

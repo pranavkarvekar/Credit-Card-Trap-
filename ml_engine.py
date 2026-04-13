@@ -34,10 +34,12 @@ def prepare_user_features(user_data):
     credit_limit = user_data.get("credit_limit", 100000)
     outstanding = user_data.get("outstanding_balance", 0)
     late_payments = user_data.get("late_payments", 0)
-    total_spend = user_data.get("total_spend_last_year", 0)
-    avg_txn = user_data.get("avg_transaction_amount", 0)
-    max_txn = user_data.get("max_transaction_amount", 0)
     monthly_emi = user_data.get("monthly_emi_amount", 0)
+
+    # Auto-estimate spending features if not provided by user
+    total_spend = user_data.get("total_spend_last_year") or int(annual_income * 0.50)
+    avg_txn = user_data.get("avg_transaction_amount") or max(int(total_spend / 150), 500)
+    max_txn = user_data.get("max_transaction_amount") or max(int(credit_limit * 0.15), avg_txn * 5)
 
     # Calculate derived features
     utilization = outstanding / max(credit_limit, 1)
@@ -80,12 +82,21 @@ def predict_risk(model, user_data):
         if label not in prob_dict:
             prob_dict[label] = 0.0
 
-    # Calculate a 0-100 risk score
-    risk_score = (
-        prob_dict.get("Low Risk", 0) * 10 +
-        prob_dict.get("Medium Risk", 0) * 50 +
-        prob_dict.get("High Risk", 0) * 95
-    )
+    # Calculate a 0-100 risk score anchored to the predicted class
+    predicted_label = RISK_LABELS.get(prediction, "Unknown")
+    high_prob = prob_dict.get("High Risk", 0)
+    med_prob = prob_dict.get("Medium Risk", 0)
+    low_prob = prob_dict.get("Low Risk", 0)
+
+    if predicted_label == "High Risk":
+        # High Risk: score range 65-100, scaled by model confidence
+        risk_score = 65 + high_prob * 35
+    elif predicted_label == "Medium Risk":
+        # Medium Risk: score range 35-65, scaled by model confidence
+        risk_score = 35 + med_prob * 30
+    else:
+        # Low Risk: score range 0-35, inversely scaled by confidence
+        risk_score = 35 - low_prob * 35
 
     return {
         "risk_level": int(prediction),
